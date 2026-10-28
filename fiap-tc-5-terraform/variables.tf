@@ -97,7 +97,7 @@ variable "servicebus_sku" {
 # ============================================
 
 variable "argocd_github_token" {
-  description = "Token do GitHub (fine-grained, só leitura de Contents no fiap-tc-5-gitops) para o ArgoCD ler o repositório GitOps privado. Vazio = repositório público, sem credencial."
+  description = "Token do GitHub (fine-grained, só leitura de Contents no monorepo) para o ArgoCD ler o GitOps num repositório privado. Vazio = repositório público, sem credencial."
   type        = string
   sensitive   = true
   default     = ""
@@ -114,12 +114,18 @@ variable "monitored_services" {
 }
 
 variable "github_owner" {
-  description = "Usuário ou organização do GitHub que hospeda os repositórios fiap-tc-5-* (serviços e GitOps)"
+  description = "Usuário ou organização do GitHub dono do monorepo"
   type        = string
 }
 
+variable "github_repo" {
+  description = "Nome do monorepo no GitHub (serviços, GitOps e esta IaC)"
+  type        = string
+  default     = "solidary-tech-vale"
+}
+
 variable "service_repos" {
-  description = "Sobrescreve o repositório (\"owner/repo\") de um serviço no webhook de self-healing. Por padrão cada serviço usa \"<github_owner>/fiap-tc-5-<serviço>\" (local.service_repos em main.tf)."
+  description = "Sobrescreve o repositório (\"owner/repo\") de um serviço no webhook de self-healing. Por padrão todos usam o monorepo \"<github_owner>/<github_repo>\" (local.service_repos em main.tf)."
   type        = map(string)
   default     = {}
 }
@@ -172,7 +178,7 @@ variable "github_selfheal_token" {
 }
 
 variable "gitops_repo" {
-  description = "Repositório GitOps (owner/repo) lido pelo ArgoCD e usado como fallback do self-healing. Padrão: \"<github_owner>/fiap-tc-5-gitops\"."
+  description = "Repositório GitOps (owner/repo) lido pelo ArgoCD e usado como fallback do self-healing. Padrão: o monorepo \"<github_owner>/<github_repo>\"."
   type        = string
   default     = null
 }

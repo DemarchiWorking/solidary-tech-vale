@@ -38,9 +38,8 @@ resource "datadog_webhook" "discord_alerts" {
 }
 
 # --- Self-Healing: dispara o workflow do GitHub Actions (repository_dispatch) ---
-# Um webhook por serviço, apontando para o repositório do PRÓPRIO
-# microsserviço (diferente da Fase 4, onde o workflow morava no repo do
-# GitOps) — cada serviço da SolidaryTech tem seu próprio repositório.
+# Um webhook por serviço, todos no monorepo: o event_type
+# "self-heal-<serviço>" escolhe o workflow, que só reinicia esse serviço.
 resource "datadog_webhook" "github_selfheal" {
   for_each  = toset(var.monitored_services)
   name      = "github-selfheal-${each.value}"
@@ -53,7 +52,7 @@ resource "datadog_webhook" "github_selfheal" {
   })
 
   payload = jsonencode({
-    event_type = "self-heal"
+    event_type = "self-heal-${each.value}"
     client_payload = {
       service     = each.value
       alert_title = "$ALERT_TITLE"

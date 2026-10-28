@@ -12,15 +12,15 @@ spec:
       helm:
         releaseName: sonarqube
         valueFiles:
-          - $values/addons/sonarqube/values.yaml
+          - $values/fiap-tc-5-gitops/addons/sonarqube/values.yaml
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
       ref: values
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
-      path: addons/sonarqube
+      path: fiap-tc-5-gitops/addons/sonarqube
       directory:
         include: "ingress.yaml"
 

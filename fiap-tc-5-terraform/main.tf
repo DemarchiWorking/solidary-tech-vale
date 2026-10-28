@@ -1,13 +1,13 @@
 locals {
   prefix = "${var.project_name}-${var.environment}"
 
-  # Repositórios do GitHub derivados de var.github_owner, para o código
-  # não depender de uma conta específica (ArgoCD e webhooks de
-  # self-healing). var.service_repos e var.gitops_repo sobrescrevem.
-  gitops_repo = coalesce(var.gitops_repo, "${var.github_owner}/fiap-tc-5-gitops")
+  # Monorepo no GitHub (var.github_owner/var.github_repo): o ArgoCD lê o
+  # GitOps dele e os webhooks de self-healing disparam nele, cada serviço
+  # com o seu event_type. var.gitops_repo e var.service_repos sobrescrevem.
+  github_repo = "${var.github_owner}/${var.github_repo}"
+  gitops_repo = coalesce(var.gitops_repo, local.github_repo)
   service_repos = merge(
-    { for s in ["ngo-service", "donation-service", "volunteer-service", "notification-service"] :
-    s => "${var.github_owner}/fiap-tc-5-${s}" },
+    { for s in ["ngo-service", "donation-service", "volunteer-service", "notification-service"] : s => local.github_repo },
     var.service_repos,
   )
 

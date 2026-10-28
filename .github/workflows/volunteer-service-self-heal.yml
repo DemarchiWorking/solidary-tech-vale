@@ -1,29 +1,33 @@
-name: Self-Healing - Runbook Automation
+name: Self-Healing - volunteer-service
 
 # Disparado via webhook do Datadog (Monitor -> Integração Webhook,
-# @webhook-github-selfheal-notification-service, ver
-# fiap-tc-5-terraform/datadog.tf) — só dispara se "notification-service"
+# @webhook-github-selfheal-volunteer-service, ver
+# fiap-tc-5-terraform/datadog.tf) — só dispara se "volunteer-service"
 # estiver em var.monitored_services.
 #
-#   POST https://api.github.com/repos/<owner>/fiap-tc-5-notification-service/dispatches
+# Monorepo: os 4 self-heals moram neste repositório; cada um escuta o
+# próprio event_type (self-heal-volunteer-service) e só reinicia o seu serviço.
+# O GitHub só dispara repository_dispatch pelos workflows da branch padrão.
+#
+#   POST https://api.github.com/repos/<owner>/<repo>/dispatches
 #   Authorization: Bearer <GitHub PAT com escopo 'repo'>
 #   Accept: application/vnd.github+json
 #   {
-#     "event_type": "self-heal",
-#     "client_payload": { "service": "notification-service", "alert_title": "...", "alert_id": "..." }
+#     "event_type": "self-heal-volunteer-service",
+#     "client_payload": { "service": "volunteer-service", "alert_title": "...", "alert_id": "..." }
 #   }
 
 on:
   repository_dispatch:
-    types: [self-heal]
+    types: [self-heal-volunteer-service]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 env:
-  SERVICE_NAME: notification-service
-  NAMESPACE: notification
+  SERVICE_NAME: volunteer-service
+  NAMESPACE: volunteer
 
 jobs:
   rollout-restart:

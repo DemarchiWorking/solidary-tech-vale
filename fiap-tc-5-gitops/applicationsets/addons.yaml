@@ -6,9 +6,9 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
     targetRevision: HEAD
-    path: addons
+    path: fiap-tc-5-gitops/addons
   destination:
     server: https://kubernetes.default.svc
     namespace: argocd

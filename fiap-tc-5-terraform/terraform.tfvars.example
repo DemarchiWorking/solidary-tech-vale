@@ -11,11 +11,12 @@ postgres_admin_password = "<senha-forte>"
 # (custa dinheiro real). Deixe `false` pra validar só cluster+observabilidade.
 deploy_databases = false
 
-# Dono dos repositórios fiap-tc-5-* no GitHub (serviços e GitOps)
+# Monorepo no GitHub (serviços, GitOps e esta IaC)
 github_owner = "<usuario-ou-organizacao-github>"
+github_repo  = "solidary-tech-vale"
 
-# Token fine-grained só de leitura (Contents: Read) no fiap-tc-5-gitops,
-# para o ArgoCD ler o repositório privado. Deixe vazio se ele for público.
+# Token fine-grained só de leitura (Contents: Read) no monorepo, para o
+# ArgoCD ler o GitOps no repositório privado. Deixe vazio se ele for público.
 argocd_github_token = "<github-token-fine-grained-so-leitura>"
 
 # Datadog (Organization Settings > API Keys / Application Keys)

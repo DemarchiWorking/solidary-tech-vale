@@ -8,17 +8,19 @@ spec:
   goTemplateOptions: ["missingkey=error"]
   generators:
     - git:
-        repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+        repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
         revision: HEAD
         directories:
-          - path: apps/*/overlays/prod
+          # Monorepo: o caminho começa em fiap-tc-5-gitops/, então o nome do app
+          # (ngo, donation, ...) é o segmento 2.
+          - path: fiap-tc-5-gitops/apps/*/overlays/prod
   template:
     metadata:
-      name: 'app-{{ index .path.segments 1 }}'
+      name: 'app-{{ index .path.segments 2 }}'
     spec:
       project: default
       source:
-        repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+        repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
         targetRevision: HEAD
         path: '{{ .path.path }}'
       destination:
@@ -26,7 +28,7 @@ spec:
         # Sem prefixo de produto no namespace (diferente da Fase 3/4, que
         # usava "togglemaster-<app>") — aqui o namespace é o nome do app
         # direto: "ngo", "donation", "volunteer", "notification".
-        namespace: '{{ index .path.segments 1 }}'
+        namespace: '{{ index .path.segments 2 }}'
       syncPolicy:
         automated:
           selfHeal: true

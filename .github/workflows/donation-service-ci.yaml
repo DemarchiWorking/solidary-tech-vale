@@ -1,17 +1,35 @@
-name: CI - Build, Test, Scan and Push
+name: CI - donation-service
 
+# Monorepo: só roda quando muda o próprio serviço (ou este workflow).
+# Testa main e branch-azure; publica a imagem e atualiza o GitOps só na
+# branch padrão do repositório, a mesma que o ArgoCD acompanha (HEAD).
 on:
   push:
-    branches: [main]
+    branches: [main, branch-azure]
+    paths:
+      - "fiap-tc-5-donation-service/**"
+      - ".github/workflows/donation-service-ci.yaml"
   pull_request:
-    branches: [main]
+    branches: [main, branch-azure]
+    paths:
+      - "fiap-tc-5-donation-service/**"
+      - ".github/workflows/donation-service-ci.yaml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 env:
-  ACR_NAME: ${{ vars.ACR_NAME }}
+  # Sem a variável ACR_NAME a imagem é construída e escaneada, mas não
+  # publicada (o nome abaixo só serve de tag local).
+  ACR_NAME: ${{ vars.ACR_NAME || 'acr-nao-configurado' }}
   IMAGE_NAME: donation-service
-  GITOPS_REPO: ${{ github.repository_owner }}/fiap-tc-5-gitops
-  GITOPS_APP_PATH: apps/donation/overlays/prod
+  GITOPS_APP_PATH: fiap-tc-5-gitops/apps/donation/overlays/prod
+
+# Os comandos de cada job rodam na pasta do serviço.
+defaults:
+  run:
+    working-directory: fiap-tc-5-donation-service
 
 jobs:
   lint:
@@ -25,6 +43,7 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.25"
+          cache-dependency-path: fiap-tc-5-donation-service/go.sum
 
       - name: Download dependencies
         run: go mod download
@@ -42,6 +61,7 @@ jobs:
         uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9
         with:
           version: v2.12
+          working-directory: fiap-tc-5-donation-service
 
   test:
     name: Unit Tests
@@ -54,6 +74,7 @@ jobs:
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version: "1.25"
+          cache-dependency-path: fiap-tc-5-donation-service/go.sum
 
       - name: Download dependencies
         run: go mod download
@@ -74,13 +95,20 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage
-          path: coverage.out
+          path: fiap-tc-5-donation-service/coverage.out
 
   sonarqube:
     name: SonarQube Scan
     runs-on: ubuntu-latest
     needs: [lint, test]
+    # Sem SONAR_TOKEN cadastrado, a análise é pulada em vez de falhar.
+    env:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
     steps:
+      - name: SonarQube não configurado
+        if: env.SONAR_TOKEN == ''
+        run: echo "::notice::SONAR_TOKEN não cadastrado; análise do SonarQube pulada."
+
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -90,13 +118,16 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: coverage
+          path: fiap-tc-5-donation-service
 
       - name: SonarQube Scan
+        if: env.SONAR_TOKEN != ''
         uses: SonarSource/sonarqube-scan-action@689fb39b34b9aa95ebc5f8f119343ddd51542402 # v4
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
+          projectBaseDir: fiap-tc-5-donation-service
           args: >
             -Dsonar.projectKey=donation-service
             -Dsonar.sources=.
@@ -115,7 +146,7 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
-          scan-ref: "."
+          scan-ref: "fiap-tc-5-donation-service"
           format: "table"
           exit-code: "1"
           severity: "CRITICAL"
@@ -135,8 +166,12 @@ jobs:
           severity: "CRITICAL"
           ignore-unfixed: "true"
 
+      - name: Publicação não configurada
+        if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME == ''
+        run: echo "::notice::Variável ACR_NAME não cadastrada; imagem testada, mas não publicada."
+
       - name: Login to ACR
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME != ''
         uses: azure/docker-login@15c4aadf093404726ab2ff205b2cdd33fa6d054c # v2
         with:
           login-server: ${{ env.ACR_NAME }}.azurecr.io
@@ -144,7 +179,7 @@ jobs:
           password: ${{ secrets.ACR_PASSWORD }}
 
       - name: Push to ACR
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME != ''
         run: |
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
           docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
@@ -153,13 +188,23 @@ jobs:
     name: Update GitOps
     runs-on: ubuntu-latest
     needs: build-scan-push
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME != ''
+    # Uma atualização deste serviço por vez (a mais nova vence).
+    concurrency:
+      group: gitops-update-donation-service
+      cancel-in-progress: false
+    # O GitOps está neste mesmo repositório: basta o GITHUB_TOKEN, e o
+    # commit feito com ele não dispara outros workflows.
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
     steps:
-      - name: Checkout GitOps repo
+      - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          repository: ${{ env.GITOPS_REPO }}
-          token: ${{ secrets.GITOPS_TOKEN }}
+          ref: ${{ github.ref_name }}
 
       - name: Update image tag
         run: |
@@ -170,7 +215,14 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add .
+          git add "${{ env.GITOPS_APP_PATH }}"
           git diff --staged --quiet && echo "No changes to commit" && exit 0
           git commit -m "deploy: update ${{ env.IMAGE_NAME }} to ${{ github.sha }}"
-          git push
+          # Outro serviço pode ter atualizado o GitOps no meio do caminho:
+          # rebase (arquivos diferentes, sem conflito) e tenta de novo.
+          for tentativa in 1 2 3; do
+            echo "push do GitOps: tentativa $tentativa de 3"
+            git pull --rebase origin "${{ github.ref_name }}" && git push origin "HEAD:${{ github.ref_name }}" && exit 0
+            sleep 5
+          done
+          exit 1

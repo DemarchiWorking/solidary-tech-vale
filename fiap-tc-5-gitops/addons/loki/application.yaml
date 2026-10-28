@@ -12,9 +12,9 @@ spec:
       helm:
         releaseName: loki
         valueFiles:
-          - $values/addons/loki/values.yaml
+          - $values/fiap-tc-5-gitops/addons/loki/values.yaml
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
       ref: values
 

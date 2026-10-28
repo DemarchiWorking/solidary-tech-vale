@@ -10,10 +10,10 @@ resource "helm_release" "argocd" {
   namespace        = "argocd"
   create_namespace = true
 
-  # Repositório fiap-tc-5-gitops privado: o ArgoCD autentica com
-  # argocd_github_token (fine-grained, só leitura de Contents nesse
-  # repositório). Com a variável vazia, clona sem credencial, o que só
-  # funciona se o repositório for público.
+  # Monorepo privado: o ArgoCD autentica com argocd_github_token
+  # (fine-grained, só leitura de Contents nesse repositório). Com a
+  # variável vazia, clona sem credencial, o que só funciona se o
+  # repositório for público.
   set = [
     {
       name  = "server.service.type"

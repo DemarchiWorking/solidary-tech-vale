@@ -12,15 +12,15 @@ spec:
       helm:
         releaseName: velero
         valueFiles:
-          - $values/addons/velero/values.yaml
+          - $values/fiap-tc-5-gitops/addons/velero/values.yaml
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
       ref: values
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
-      path: addons/velero
+      path: fiap-tc-5-gitops/addons/velero
       directory:
         # include aceita uma lista separada por vírgula de glob patterns.
         include: "schedule.yaml"

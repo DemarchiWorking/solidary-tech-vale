@@ -12,15 +12,15 @@ spec:
       helm:
         releaseName: kube-prometheus-stack
         valueFiles:
-          - $values/addons/kube-prometheus-stack/values.yaml
+          - $values/fiap-tc-5-gitops/addons/kube-prometheus-stack/values.yaml
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
       ref: values
 
-    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
       targetRevision: HEAD
-      path: addons/kube-prometheus-stack
+      path: fiap-tc-5-gitops/addons/kube-prometheus-stack
       directory:
         include: "grafana-ingress.yaml"
 
