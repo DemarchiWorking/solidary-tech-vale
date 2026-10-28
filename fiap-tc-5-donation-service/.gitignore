@@ -1,0 +1,7 @@
+# Variáveis locais (DATABASE_URL, connection strings): nunca versionar
+.env
+.env.*
+
+# Build e testes
+/donation-service
+coverage.out

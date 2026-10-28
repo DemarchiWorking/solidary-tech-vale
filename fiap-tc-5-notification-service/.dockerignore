@@ -1,0 +1,9 @@
+# Fora da imagem: segredos locais, histórico do git e artefatos de teste
+.env
+.env.*
+.git
+.github
+**/__pycache__
+.coverage
+coverage.*
+.pytest_cache

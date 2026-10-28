@@ -1,0 +1,13 @@
+# Variáveis locais (DATABASE_URL, connection strings): nunca versionar
+.env
+.env.*
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Testes
+.coverage
+coverage.xml
+.pytest_cache/

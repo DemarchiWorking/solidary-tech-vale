@@ -1,0 +1,31 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: addon-otel-collector-gateway
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+      chart: opentelemetry-collector
+      targetRevision: 0.173.0
+      helm:
+        releaseName: otel-collector
+        valueFiles:
+          - $values/addons/otel-collector-gateway/values.yaml
+
+    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+      targetRevision: HEAD
+      ref: values
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+  # O Secret datadog-api-key (lido via extraEnvsFrom no values.yaml) é
+  # criado pelo Terraform (fiap-tc-5-terraform/k8s-secrets.tf), fora do Git.

@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: notification
+resources:
+- ../../base
+images:
+- name: notification-service
+  newName: acr-nao-configurado.invalid/notification-service
+  newTag: latest

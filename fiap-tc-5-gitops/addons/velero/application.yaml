@@ -1,0 +1,38 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: addon-velero
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://vmware-tanzu.github.io/helm-charts
+      chart: velero
+      targetRevision: 12.1.0
+      helm:
+        releaseName: velero
+        valueFiles:
+          - $values/addons/velero/values.yaml
+
+    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+      targetRevision: HEAD
+      ref: values
+
+    - repoURL: https://github.com/DemarchiWorking/fiap-tc-5-gitops.git
+      targetRevision: HEAD
+      path: addons/velero
+      directory:
+        # include aceita uma lista separada por vírgula de glob patterns.
+        include: "schedule.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true
+  # O Secret cloud-credentials é criado pelo Terraform
+  # (fiap-tc-5-terraform/k8s-secrets.tf), fora do Git.
