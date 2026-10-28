@@ -1,0 +1,35 @@
+# Gateway único da plataforma: um load balancer global (L7) com o IP
+# reservado e o certificado gerenciado criados pelo Terraform
+# (infra/terraform/modules/edge). Os nomes abaixo são fixos lá.
+#
+# O listener HTTPS não tem bloco tls: o TLS vem do mapa de certificados da
+# anotação certmap (usar os dois juntos é erro no GKE). Só namespaces com a
+# label solidarytech.io/gateway=true (criados pelo Terraform) podem pendurar
+# rotas no HTTPS; o HTTP só aceita a rota de redirect deste namespace.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: solidarytech
+  annotations:
+    networking.gke.io/certmap: solidarytech-gateway-certmap
+spec:
+  gatewayClassName: gke-l7-global-external-managed
+  addresses:
+    - type: NamedAddress
+      value: solidarytech-gateway-ip
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              solidarytech.io/gateway: "true"
+    - name: http
+      protocol: HTTP
+      port: 80
+      allowedRoutes:
+        namespaces:
+          from: Same

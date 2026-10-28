@@ -1,0 +1,11 @@
+# Copie para terraform.tfvars (gitignorado). No CI, vêm de secrets como TF_VAR_<nome>.
+datadog_api_key       = "<datadog-api-key>"
+datadog_app_key       = "<datadog-app-key>"
+pagerduty_token       = "<pagerduty-token>"
+pagerduty_user_email  = "<email-do-usuario-pagerduty>"
+discord_webhook_url   = "https://discord.com/api/webhooks/<id>/<token>"
+# Token fine-grained só deste repositório, com Contents: Read and write
+# (é a permissão que o POST /repos/{owner}/{repo}/dispatches exige).
+github_selfheal_token = "<token-fine-grained-com-contents-write>"
+
+# monitored_services = ["donation-service", "ngo-service", "volunteer-service", "notification-service"]

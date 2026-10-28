@@ -1,0 +1,14 @@
+# Copie para terraform.tfvars (gitignorado).
+project_id = "<id-do-projeto-gcp>"
+
+# Valores padrão (mude só se precisar):
+# region             = "southamerica-east1"
+# dr_region          = "southamerica-west1"
+# node_machine_type  = "e2-standard-2"
+# min_nodes_per_zone = 1
+# max_nodes_per_zone = 2
+# sql_tier           = "db-custom-1-3840"
+# hostname           = ""   # vazio = <ip>.sslip.io
+
+# Output ci_deployer_service_account do bootstrap.
+ci_deployer_service_account = "<ci-deployer@id-do-projeto.iam.gserviceaccount.com>"

@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ngo
+resources:
+- ../../base
+- configmap.yaml
+- db-init-job.yaml
+- gateway.yaml
+images:
+- name: ngo-service
+  newName: registry-nao-configurado.invalid/ngo-service
+  newTag: latest

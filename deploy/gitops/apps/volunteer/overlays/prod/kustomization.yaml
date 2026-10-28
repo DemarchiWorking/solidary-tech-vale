@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: volunteer
+resources:
+- ../../base
+- gateway.yaml
+images:
+- name: volunteer-service
+  newName: registry-nao-configurado.invalid/volunteer-service
+  newTag: latest

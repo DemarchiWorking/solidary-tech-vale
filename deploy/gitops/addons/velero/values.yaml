@@ -1,0 +1,55 @@
+# SolidaryTech - Velero (Disaster Recovery — Opção A do desafio)
+#
+# Faz backup do estado do cluster (manifestos) para o bucket de DR no GCS,
+# na região secundária, e dos volumes por snapshot CSI dos discos (PD),
+# também guardados na região secundária (volumesnapshotclass.yaml). O
+# bucket e a GSA vêm do Terraform (infra/terraform/modules/data e
+# modules/workload-identity). As Schedules ficam em schedule.yaml.
+#
+# Credencial: nenhuma chave. A KSA velero-server é anotada com a GSA e o
+# Workload Identity faz o resto. Os valores __...__ são preenchidos por
+# scripts/configurar-ambiente.sh a partir dos outputs do Terraform.
+
+initContainers:
+  - name: velero-plugin-for-gcp
+    # Plugin 1.14.x é o par do Velero 1.18.x (chart 12.1.0).
+    image: velero/velero-plugin-for-gcp:v1.14.4
+    imagePullPolicy: IfNotPresent
+    volumeMounts:
+      - mountPath: /target
+        name: plugins
+
+credentials:
+  useSecret: false
+
+serviceAccount:
+  server:
+    annotations:
+      iam.gke.io/gcp-service-account: "__VELERO_GSA__"
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+configuration:
+  backupStorageLocation:
+    - name: default
+      provider: gcp
+      bucket: "__DR_BUCKET__"
+      prefix: velero
+      default: true
+      config:
+        # A GSA assina as URLs de download (velero backup describe/logs).
+        serviceAccount: "__VELERO_GSA__"
+
+  # Só snapshots CSI: o VolumeSnapshotClass com a label do Velero define
+  # onde ficam. Sem VolumeSnapshotLocation nativo.
+  volumeSnapshotLocation: []
+  features: EnableCSI
+
+snapshotsEnabled: false
+deployNodeAgent: false

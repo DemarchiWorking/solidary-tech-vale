@@ -1,0 +1,81 @@
+name: Validate - GitOps, workflows e docs
+
+# O que o ArgoCD aplica, validado sem cluster (scripts/ci/gitops-check.sh,
+# o mesmo do scripts/validar.sh): kustomize e helm template com os values
+# do repositório, kubeconform estrito com o catálogo de CRDs, checagens
+# estruturais, db-init idempotente, configurar-ambiente.sh idempotente e
+# lint dos scripts. Os workflows passam pelo actionlint, e a documentação
+# tem os links e os caminhos citados conferidos (scripts/ci/checar_docs.py).
+on:
+  push:
+    branches: [main, branch-gcp]
+    paths:
+      - "deploy/gitops/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "docs/**"
+      - "README.md"
+  pull_request:
+    branches: [main, branch-gcp]
+    paths:
+      - "deploy/gitops/**"
+      - "scripts/**"
+      - ".github/workflows/**"
+      - "docs/**"
+      - "README.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gitops:
+    name: kustomize, helm, kubeconform e checagens
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml==6.0.3
+
+      - name: Gate do GitOps (sem cluster)
+        run: bash scripts/ci/gitops-check.sh
+
+  workflows:
+    name: actionlint e checagens dos workflows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12 -no-color
+
+      - name: Setup Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PyYAML
+        run: pip install pyyaml==6.0.3
+
+      # Actions por SHA, id-token onde há federação, caminhos que existem,
+      # nada de payload externo interpolado em script, nada de Azure.
+      - name: Checagens estruturais dos workflows
+        run: python3 -P scripts/ci/checar_workflows.py .
+
+  docs:
+    name: links e caminhos citados na documentação
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Checagem da documentação
+        run: python3 -P scripts/ci/checar_docs.py .

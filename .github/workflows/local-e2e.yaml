@@ -1,0 +1,52 @@
+name: E2E - ambiente local (docker compose)
+
+# Sobe o ambiente local inteiro (Postgres, emuladores oficiais do Pub/Sub e
+# do Firestore, OTel Collector e os 4 serviços com CLOUD_PROVIDER=gcp) e
+# roda scripts/smoke-local.sh: doação -> Pub/Sub -> notification ->
+# Firestore, voluntário no Firestore e mensagem inválida na DLQ. É a prova
+# de ponta a ponta dos adaptadores GCP antes de qualquer imagem ir para a
+# nuvem.
+on:
+  push:
+    branches: [main, branch-gcp]
+    paths:
+      - "services/**"
+      - "docker-compose.yml"
+      - "scripts/local/**"
+      - "scripts/smoke-local.sh"
+      - ".github/workflows/local-e2e.yaml"
+  pull_request:
+    branches: [main, branch-gcp]
+    paths:
+      - "services/**"
+      - "docker-compose.yml"
+      - "scripts/local/**"
+      - "scripts/smoke-local.sh"
+      - ".github/workflows/local-e2e.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    name: compose up + smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Subir o ambiente
+        run: docker compose up -d --build --wait --wait-timeout 600
+
+      - name: Smoke de ponta a ponta
+        run: bash scripts/smoke-local.sh
+
+      - name: Logs dos containers
+        if: failure()
+        run: docker compose logs --no-color --tail=200
+
+      - name: Derrubar o ambiente
+        if: always()
+        run: docker compose down -v --remove-orphans

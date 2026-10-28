@@ -1,0 +1,48 @@
+# SAST (análise estática de código) exigido explicitamente no desafio
+# ("SAST/SCA com ferramentas como Trivy/Sonar"). Trivy cobre o SCA
+# (dependências + imagem); SonarQube cobre o SAST (qualidade/segurança do
+# código-fonte dos 4 microsserviços).
+#
+# Banco no Cloud SQL (o chart 2026.x não tem mais Postgres embutido; sem
+# banco externo ele cairia no H2, que não serve para produção). Senhas em
+# Secrets criados pelo Terraform (infra/terraform/modules/platform).
+
+community:
+  enabled: true
+
+# Servido em /sonarqube pelo Gateway (route.yaml). O CI usa
+# https://<hostname>/sonarqube como SONAR_HOST_URL.
+sonarWebContext: /sonarqube
+
+service:
+  type: ClusterIP
+
+ingress:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 400m
+    memory: 1Gi
+  limits:
+    cpu: "1"
+    memory: 2Gi
+
+persistence:
+  enabled: true
+  size: 5Gi
+
+jdbcOverwrite:
+  enabled: true
+  # Preenchido por scripts/configurar-ambiente.sh (output sonarqube_jdbc_url).
+  jdbcUrl: "__SONARQUBE_JDBC_URL__"
+  jdbcUsername: sonarqube
+  jdbcSecretName: sonarqube-jdbc
+  jdbcSecretPasswordKey: jdbc-password
+
+# O hook do chart troca a senha padrão do admin pela do Secret.
+setAdminPassword:
+  passwordSecretName: sonarqube-admin
+
+monitoringPasscodeSecretName: sonarqube-monitoring
+monitoringPasscodeSecretKey: passcode
