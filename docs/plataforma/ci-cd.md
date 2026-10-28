@@ -97,8 +97,9 @@ Terraform.
 | `GCP_REGISTRY` | variável | output `registry_url` de `envs/prod/infra` | CIs |
 | `GKE_CLUSTER_NAME` | variável | output `cluster_name` | self-heals |
 | `GKE_LOCATION` | variável | output `cluster_location` (padrão `southamerica-east1`) | self-heals |
+| `SONAR_ORGANIZATION` | variável | chave da organização no SonarQube Cloud; vazia com SonarQube próprio ([runbook 06](../operacao/runbooks/06-sonarqube-no-ci.md#alternativa-sonarqube-cloud-sonarcloudio)) | CIs |
 | `PAGERDUTY_USER_EMAIL`, `DD_SITE` | variáveis | e-mail do usuário do PagerDuty; site do Datadog (opcional) | terraform |
-| `SONAR_TOKEN`, `SONAR_HOST_URL` | secrets | token e URL do SonarQube | CIs |
+| `SONAR_TOKEN`, `SONAR_HOST_URL` | secrets | Global Analysis Token e `https://<host>/sonarqube` ([runbook 06](../operacao/runbooks/06-sonarqube-no-ci.md)); sem os dois, a análise é pulada com aviso | CIs |
 | `DD_API_KEY`, `DD_APP_KEY` | secrets | chaves do Datadog | terraform |
 | `PAGERDUTY_TOKEN`, `DISCORD_WEBHOOK_URL` | secrets | token do PagerDuty, webhook do Discord | terraform |
 | `GH_SELFHEAL_TOKEN` | secret | token fine-grained deste repositório com Contents: Read and write | terraform (webhook do Datadog) |
@@ -109,7 +110,10 @@ Terraform.
 - actionlint 1.7.12: 0 problemas nos 11 workflows.
 - `scripts/ci/checar_workflows.py`: 0 falhas, e pega os quatro defeitos
   plantados num teste negativo (action sem SHA, payload interpolado, job sem
-  `id-token: write`, caminho inexistente).
+  `id-token: write`, caminho inexistente). Também falha num `run:` que roda
+  antes do checkout dentro de uma pasta do repositório: foi o que quebrou o
+  job do SonarQube na primeira execução no GitHub, quando os secrets ainda
+  não existiam.
 - Os comandos de cada job rodaram localmente: Go em `golang:1.26` com
   `-race`, Python em `python:3.12-slim`, os dois gates e o E2E com
   `docker compose`.

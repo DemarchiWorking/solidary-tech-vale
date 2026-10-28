@@ -6,7 +6,10 @@
   existem no repositório;
 - dado de fora (client_payload, títulos de PR/issue) nunca interpolado
   direto num `run:`;
-- nenhum resto da versão Azure (azure/*, ACR_*, AKS_*).
+- nenhum resto da versão Azure (azure/*, ACR_*, AKS_*);
+- nenhum `run:` antes do checkout com working-directory numa pasta do
+  repositório (antes do checkout só existe a raiz do workspace, e o bash
+  nem chega a iniciar).
 
 uso: python3 -P scripts/ci/checar_workflows.py <raiz do repositório>
 requer: PyYAML
@@ -59,6 +62,7 @@ for f in arquivos:
         perm = job.get("permissions", perm_wf) or {}
         wd_job = ((job.get("defaults") or {}).get("run") or {}).get("working-directory", wd_wf)
         usa_auth = False
+        fez_checkout = False
         for passo in job.get("steps", []):
             uses = passo.get("uses")
             if uses:
@@ -66,8 +70,13 @@ for f in arquivos:
                     falhas.append(f"{nome}/{job_id}: action sem SHA '{uses}'")
                 if uses.startswith("google-github-actions/auth@"):
                     usa_auth = True
+                if uses.startswith("actions/checkout@"):
+                    fez_checkout = True
             run = passo.get("run")
             if run:
+                wd_passo = passo.get("working-directory", wd_job)
+                if not fez_checkout and wd_passo not in (None, ".", ""):
+                    falhas.append(f"{nome}/{job_id}: '{passo.get('name')}' roda em '{wd_passo}' antes do checkout")
                 if NAO_CONFIAVEL.search(run):
                     falhas.append(f"{nome}/{job_id}: dado de fora interpolado no run ('{passo.get('name')}')")
                 for s in re.findall(r"bash (scripts/[\w./-]+\.sh)", run):
