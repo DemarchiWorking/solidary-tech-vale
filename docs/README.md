@@ -45,4 +45,5 @@ o projeto vem, o que mudou do Azure para o GCP e o que foi validado.
   [02](operacao/runbooks/02-primeiro-deploy.md) primeiro deploy,
   [03](operacao/runbooks/03-rollback.md) rollback,
   [04](operacao/runbooks/04-restore-velero.md) restore (Velero, Cloud SQL, Firestore),
-  [05](operacao/runbooks/05-failover-regiao-dr.md) failover de região.
+  [05](operacao/runbooks/05-failover-regiao-dr.md) failover de região,
+  [06](operacao/runbooks/06-sonarqube-no-ci.md) SonarQube no CI (cadastrar e atualizar os secrets).
