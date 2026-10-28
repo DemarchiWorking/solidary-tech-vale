@@ -1,18 +1,27 @@
 name: CI - ngo-service
 
 # Monorepo: só roda quando muda o próprio serviço (ou este workflow).
-# Testa main e branch-azure; publica a imagem e atualiza o GitOps só na
-# branch padrão do repositório, a mesma que o ArgoCD acompanha (HEAD).
+# Testa main e branch-gcp; publica a imagem no Artifact Registry e atualiza
+# o GitOps só na branch padrão do repositório, a mesma que o ArgoCD
+# acompanha (HEAD).
+#
+# Sem chave de service account: o job de publicação troca o token OIDC do
+# GitHub pela SA ci-deployer (Workload Identity Federation, criada em
+# infra/terraform/bootstrap), que só escreve no repositório de imagens.
+# Variáveis do repositório (Settings > Secrets and variables > Actions):
+#   GCP_WIF_PROVIDER  output workload_identity_provider do bootstrap
+#   GCP_CI_SA         output ci_deployer_service_account do bootstrap
+#   GCP_REGISTRY      output registry_url de envs/prod/infra
 on:
   push:
-    branches: [main, branch-azure]
+    branches: [main, branch-gcp]
     paths:
-      - "fiap-tc-5-ngo-service/**"
+      - "services/ngo-service/**"
       - ".github/workflows/ngo-service-ci.yaml"
   pull_request:
-    branches: [main, branch-azure]
+    branches: [main, branch-gcp]
     paths:
-      - "fiap-tc-5-ngo-service/**"
+      - "services/ngo-service/**"
       - ".github/workflows/ngo-service-ci.yaml"
   workflow_dispatch:
 
@@ -20,16 +29,16 @@ permissions:
   contents: read
 
 env:
-  # Sem a variável ACR_NAME a imagem é construída e escaneada, mas não
-  # publicada (o nome abaixo só serve de tag local).
-  ACR_NAME: ${{ vars.ACR_NAME || 'acr-nao-configurado' }}
+  # Sem as variáveis GCP_* a imagem é construída e escaneada, mas não
+  # publicada (o registry abaixo só serve de tag local).
+  REGISTRY: ${{ vars.GCP_REGISTRY || 'registry-nao-configurado.invalid' }}
   IMAGE_NAME: ngo-service
-  GITOPS_APP_PATH: fiap-tc-5-gitops/apps/ngo/overlays/prod
+  GITOPS_APP_PATH: deploy/gitops/apps/ngo/overlays/prod
 
 # Os comandos de cada job rodam na pasta do serviço.
 defaults:
   run:
-    working-directory: fiap-tc-5-ngo-service
+    working-directory: services/ngo-service
 
 jobs:
   lint:
@@ -42,7 +51,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install flake8
         run: pip install flake8
@@ -60,7 +69,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
-          python-version: "3.11"
+          python-version: "3.12"
 
       - name: Install dependencies
         run: |
@@ -74,7 +83,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage
-          path: fiap-tc-5-ngo-service/coverage.xml
+          path: services/ngo-service/coverage.xml
 
   sonarqube:
     name: SonarQube Scan
@@ -97,7 +106,7 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: coverage
-          path: fiap-tc-5-ngo-service
+          path: services/ngo-service
 
       - name: SonarQube Scan
         if: env.SONAR_TOKEN != ''
@@ -106,7 +115,7 @@ jobs:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
-          projectBaseDir: fiap-tc-5-ngo-service
+          projectBaseDir: services/ngo-service
           args: >
             -Dsonar.projectKey=ngo-service
             -Dsonar.sources=.
@@ -117,6 +126,14 @@ jobs:
     name: Build, Trivy Scan and Push
     runs-on: ubuntu-latest
     needs: [lint, test]
+    permissions:
+      contents: read
+      id-token: write # token OIDC para a federação de identidade
+    outputs:
+      publicado: ${{ steps.push.outputs.publicado }}
+    env:
+      # Publica só na branch padrão, fora de PR, e com as três variáveis.
+      PUBLICAR: ${{ github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.GCP_REGISTRY != '' && vars.GCP_WIF_PROVIDER != '' && vars.GCP_CI_SA != '' }}
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -125,49 +142,65 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: "fs"
-          scan-ref: "fiap-tc-5-ngo-service"
+          scan-ref: "services/ngo-service"
           format: "table"
           exit-code: "1"
           severity: "CRITICAL"
           ignore-unfixed: "true"
 
+      # Só a tag do commit: o repositório do Artifact Registry tem tags
+      # imutáveis (infra/terraform/envs/prod/infra), então não há :latest.
       - name: Build Docker image
-        run: |
-          docker build -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }} \
-                        -t ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest .
+        run: docker build -t "$REGISTRY/$IMAGE_NAME:$GITHUB_SHA" .
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
-          image-ref: "${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}"
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}"
           format: "table"
           exit-code: "1"
           severity: "CRITICAL"
           ignore-unfixed: "true"
 
       - name: Publicação não configurada
-        if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME == ''
-        run: echo "::notice::Variável ACR_NAME não cadastrada; imagem testada, mas não publicada."
+        if: env.PUBLICAR != 'true' && github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request'
+        run: echo "::notice::Variáveis GCP_REGISTRY, GCP_WIF_PROVIDER e GCP_CI_SA não cadastradas; imagem testada, mas não publicada."
 
-      - name: Login to ACR
-        if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME != ''
-        uses: azure/docker-login@15c4aadf093404726ab2ff205b2cdd33fa6d054c # v2
+      - name: Autenticar no Google Cloud (Workload Identity Federation)
+        id: auth
+        if: env.PUBLICAR == 'true'
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
         with:
-          login-server: ${{ env.ACR_NAME }}.azurecr.io
-          username: ${{ secrets.ACR_USERNAME }}
-          password: ${{ secrets.ACR_PASSWORD }}
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_CI_SA }}
+          token_format: access_token
 
-      - name: Push to ACR
-        if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME != ''
+      - name: Host do Artifact Registry
+        id: registry
+        if: env.PUBLICAR == 'true'
+        run: echo "host=${REGISTRY%%/*}" >> "$GITHUB_OUTPUT"
+
+      - name: Login no Artifact Registry
+        if: env.PUBLICAR == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4
+        with:
+          registry: ${{ steps.registry.outputs.host }}
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - name: Push para o Artifact Registry
+        id: push
+        if: env.PUBLICAR == 'true'
         run: |
-          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
-          docker push ${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:latest
+          docker push "$REGISTRY/$IMAGE_NAME:$GITHUB_SHA"
+          echo "publicado=true" >> "$GITHUB_OUTPUT"
 
   update-gitops:
     name: Update GitOps
     runs-on: ubuntu-latest
     needs: build-scan-push
-    if: github.ref_name == github.event.repository.default_branch && github.event_name != 'pull_request' && vars.ACR_NAME != ''
+    # Só quando a imagem desta execução foi de fato publicada.
+    if: needs.build-scan-push.outputs.publicado == 'true'
     # Uma atualização deste serviço por vez (a mais nova vence).
     concurrency:
       group: gitops-update-ngo-service
@@ -187,21 +220,25 @@ jobs:
 
       - name: Update image tag
         run: |
-          cd ${{ env.GITOPS_APP_PATH }}
-          kustomize edit set image ${{ env.IMAGE_NAME }}=${{ env.ACR_NAME }}.azurecr.io/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          cd "$GITOPS_APP_PATH"
+          kustomize edit set image "$IMAGE_NAME=$REGISTRY/$IMAGE_NAME:$GITHUB_SHA"
 
       - name: Commit and push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add "${{ env.GITOPS_APP_PATH }}"
+          git add "$GITOPS_APP_PATH"
           git diff --staged --quiet && echo "No changes to commit" && exit 0
-          git commit -m "deploy: update ${{ env.IMAGE_NAME }} to ${{ github.sha }}"
-          # Outro serviço pode ter atualizado o GitOps no meio do caminho:
-          # rebase (arquivos diferentes, sem conflito) e tenta de novo.
-          for tentativa in 1 2 3; do
-            echo "push do GitOps: tentativa $tentativa de 3"
-            git pull --rebase origin "${{ github.ref_name }}" && git push origin "HEAD:${{ github.ref_name }}" && exit 0
-            sleep 5
+          git commit -m "deploy: update $IMAGE_NAME to $GITHUB_SHA"
+          # Outro serviço pode ter atualizado o GitOps no meio do caminho (um
+          # push que mexe nos 4 serviços publica os 4 quase juntos): rebase
+          # (arquivos diferentes, sem conflito) e tenta de novo. A espera
+          # aleatória evita que os mesmos concorrentes colidam de novo. Um
+          # grupo de concurrency comum aos 4 não serve: o GitHub cancela o
+          # job pendente quando chega outro, e uma atualização se perderia.
+          for tentativa in $(seq 1 10); do
+            echo "push do GitOps: tentativa $tentativa de 10"
+            git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && exit 0
+            sleep $((RANDOM % 8 + 2))
           done
           exit 1

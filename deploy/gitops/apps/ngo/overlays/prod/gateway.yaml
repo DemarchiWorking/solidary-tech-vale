@@ -1,0 +1,54 @@
+# Exposição pelo Gateway compartilhado (addons/gateway), só no listener
+# HTTPS. O caminho chega inteiro ao serviço, que registra a rota com o
+# prefixo (/ngos).
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: ngo-service
+spec:
+  parentRefs:
+    - name: solidarytech
+      namespace: gateway
+      sectionName: https
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /ngos
+      backendRefs:
+        - name: ngo-service
+          port: 8081
+---
+# O load balancer verifica /health (o padrão seria "/", que dá 404).
+apiVersion: networking.gke.io/v1
+kind: HealthCheckPolicy
+metadata:
+  name: ngo-service
+spec:
+  default:
+    checkIntervalSec: 10
+    timeoutSec: 5
+    config:
+      type: HTTP
+      httpHealthCheck:
+        port: 8081
+        requestPath: /health
+  targetRef:
+    group: ""
+    kind: Service
+    name: ngo-service
+---
+# Dreno de conexões: o load balancer para de mandar tráfego para um pod
+# antes de ele sair, para rollout e self-heal não darem 502.
+apiVersion: networking.gke.io/v1
+kind: GCPBackendPolicy
+metadata:
+  name: ngo-service
+spec:
+  default:
+    connectionDraining:
+      drainingTimeoutSec: 30
+  targetRef:
+    group: ""
+    kind: Service
+    name: ngo-service

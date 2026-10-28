@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: addon-velero
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://vmware-tanzu.github.io/helm-charts
+      chart: velero
+      targetRevision: 12.1.0
+      helm:
+        releaseName: velero
+        valueFiles:
+          - $values/deploy/gitops/addons/velero/values.yaml
+
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
+      targetRevision: HEAD
+      ref: values
+
+    - repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
+      targetRevision: HEAD
+      path: deploy/gitops/addons/velero
+      directory:
+        # include aceita uma lista separada por vírgula de glob patterns.
+        include: "schedule.yaml,volumesnapshotclass.yaml"
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: velero
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    retry:
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m
+    syncOptions:
+      - CreateNamespace=true
+  # Sem chave no cluster: a KSA velero-server usa Workload Identity com a
+  # GSA criada em infra/terraform/modules/workload-identity.

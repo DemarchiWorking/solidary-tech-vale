@@ -1,0 +1,7 @@
+# Depois do primeiro apply (state local), copie para backend.tf e rode:
+#   terraform init -migrate-state -backend-config="bucket=<state_bucket>"
+terraform {
+  backend "gcs" {
+    prefix = "bootstrap"
+  }
+}

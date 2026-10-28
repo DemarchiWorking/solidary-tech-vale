@@ -1,0 +1,10 @@
+# Pelo menos um pod no ar durante upgrade de nó e drenagem de zona.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: notification-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: notification-service

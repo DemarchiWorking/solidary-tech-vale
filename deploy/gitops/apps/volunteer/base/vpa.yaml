@@ -1,0 +1,14 @@
+# FinOps: só recomendação de CPU e memória (updateMode Off), para ajustar
+# os requests com dado real; não mexe nos pods e não briga com o HPA.
+# kubectl -n volunteer describe vpa volunteer-service
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: volunteer-service
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: volunteer-service
+  updatePolicy:
+    updateMode: "Off"

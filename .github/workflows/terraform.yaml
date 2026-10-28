@@ -1,0 +1,195 @@
+name: Terraform
+
+# Infraestrutura no GCP (infra/terraform).
+#
+# Em todo PR e push, sem nuvem: fmt, validate nas 6 raízes, terraform test
+# (mock_provider), tflint e Trivy, pelo scripts/ci/terraform-check.sh (o
+# mesmo do scripts/validar.sh).
+#
+# Com a federação configurada (variáveis GCP_* e TF_STATE_BUCKET):
+#   - PR: plan de envs/prod/infra com a SA ci-terraform-plan. Ela só lê,
+#     então o plan roda sem lock e sem refresh: mostra o efeito do código.
+#     O drift aparece no plan do apply, que faz refresh.
+#   - branch padrão: plan + apply de envs/prod/infra, envs/prod/platform e
+#     envs/prod/observability, no environment "production" (configure
+#     revisores obrigatórios em Settings > Environments), com a SA
+#     ci-terraform, que a federação só entrega a jobs desse environment.
+# O bootstrap e o DR (envs/dr) são aplicados à mão:
+# docs/operacao/runbooks/01-bootstrap-projeto-gcp.md e 05-failover-regiao-dr.md.
+on:
+  push:
+    branches: [main, branch-gcp]
+    paths:
+      - "infra/terraform/**"
+      - "scripts/ci/terraform-check.sh"
+      - ".github/workflows/terraform.yaml"
+  pull_request:
+    branches: [main, branch-gcp]
+    paths:
+      - "infra/terraform/**"
+      - "scripts/ci/terraform-check.sh"
+      - ".github/workflows/terraform.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  TERRAFORM_VERSION: "1.16.2"
+
+jobs:
+  static:
+    name: fmt, validate, test, tflint, trivy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Gate do Terraform (sem nuvem)
+        env:
+          # Evita o limite de taxa do GitHub ao baixar o plugin do tflint.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/ci/terraform-check.sh
+
+  plan:
+    name: Plan (envs/prod/infra)
+    runs-on: ubuntu-latest
+    needs: static
+    # PR de fork não recebe token OIDC: o plan fica só para PRs do repositório.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      vars.GCP_WIF_PROVIDER != '' && vars.GCP_TF_PLAN_SA != '' &&
+      vars.TF_STATE_BUCKET != '' && vars.GCP_PROJECT_ID != ''
+    permissions:
+      contents: read
+      id-token: write # token OIDC para a federação de identidade
+    defaults:
+      run:
+        working-directory: infra/terraform/envs/prod/infra
+    env:
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+      TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+      TF_VAR_ci_deployer_service_account: ${{ vars.GCP_CI_SA }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Autenticar no Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_PLAN_SA }}
+
+      - name: terraform init
+        run: terraform init -backend-config="bucket=$TF_STATE_BUCKET"
+
+      - name: terraform plan
+        run: terraform plan -lock=false -refresh=false -no-color
+
+  apply:
+    name: Apply (produção)
+    runs-on: ubuntu-latest
+    needs: static
+    if: >-
+      github.ref_name == github.event.repository.default_branch &&
+      github.event_name != 'pull_request' &&
+      vars.GCP_WIF_PROVIDER != '' && vars.GCP_TF_APPLY_SA != '' &&
+      vars.TF_STATE_BUCKET != '' && vars.GCP_PROJECT_ID != ''
+    environment: production
+    # Um apply por vez; um push novo espera o anterior terminar.
+    concurrency:
+      group: terraform-production
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write # token OIDC para a federação de identidade
+    env:
+      TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+          terraform_wrapper: false
+
+      - name: Autenticar no Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_TF_APPLY_SA }}
+
+      # 1. Rede, GKE, Cloud SQL, Pub/Sub, Firestore, registry, Gateway/TLS.
+      - name: envs/prod/infra
+        working-directory: infra/terraform/envs/prod/infra
+        env:
+          TF_VAR_project_id: ${{ vars.GCP_PROJECT_ID }}
+          TF_VAR_ci_deployer_service_account: ${{ vars.GCP_CI_SA }}
+        run: |
+          terraform init -backend-config="bucket=$TF_STATE_BUCKET"
+          terraform plan -out=tfplan -no-color
+          terraform apply -no-color tfplan
+
+      # 2. Namespaces, Secrets, ArgoCD e o app-of-apps (lê o state do passo 1).
+      - name: envs/prod/platform
+        working-directory: infra/terraform/envs/prod/platform
+        env:
+          TF_VAR_state_bucket: ${{ vars.TF_STATE_BUCKET }}
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_selfheal_service_account: ${{ vars.GCP_SELFHEAL_SA }}
+          TF_VAR_datadog_api_key: ${{ secrets.DD_API_KEY }}
+          TF_VAR_argocd_github_token: ${{ secrets.ARGOCD_GITHUB_TOKEN }}
+        run: |
+          if [ -z "$TF_VAR_datadog_api_key" ]; then
+            echo "::error::Secret DD_API_KEY não cadastrado no environment production (o OTel Collector exporta para o Datadog)."
+            exit 1
+          fi
+          terraform init -backend-config="bucket=$TF_STATE_BUCKET"
+          terraform plan -out=tfplan -no-color
+          terraform apply -no-color tfplan
+
+      # 3. Monitores, SLOs, PagerDuty e webhooks do self-heal. Opcional:
+      #    sem os secrets do Datadog/PagerDuty, fica de fora com um aviso.
+      - name: envs/prod/observability
+        working-directory: infra/terraform/envs/prod/observability
+        env:
+          TF_VAR_github_repository: ${{ github.repository }}
+          TF_VAR_datadog_api_key: ${{ secrets.DD_API_KEY }}
+          TF_VAR_datadog_app_key: ${{ secrets.DD_APP_KEY }}
+          TF_VAR_pagerduty_token: ${{ secrets.PAGERDUTY_TOKEN }}
+          TF_VAR_pagerduty_user_email: ${{ vars.PAGERDUTY_USER_EMAIL }}
+          TF_VAR_discord_webhook_url: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          TF_VAR_github_selfheal_token: ${{ secrets.GH_SELFHEAL_TOKEN }}
+          DD_SITE: ${{ vars.DD_SITE }}
+        run: |
+          faltando=""
+          for v in TF_VAR_datadog_api_key TF_VAR_datadog_app_key TF_VAR_pagerduty_token \
+                   TF_VAR_pagerduty_user_email TF_VAR_discord_webhook_url TF_VAR_github_selfheal_token; do
+            [ -n "${!v}" ] || faltando="$faltando ${v#TF_VAR_}"
+          done
+          if [ -n "$faltando" ]; then
+            echo "::warning::Observabilidade não aplicada; faltam:$faltando"
+            exit 0
+          fi
+          # Sem DD_SITE, vale o padrão da variável datadog_site.
+          if [ -n "$DD_SITE" ]; then export TF_VAR_datadog_site="$DD_SITE"; fi
+          terraform init -backend-config="bucket=$TF_STATE_BUCKET"
+          terraform plan -out=tfplan -no-color
+          terraform apply -no-color tfplan

@@ -1,0 +1,99 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: notification-service
+  labels:
+    app: notification-service
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: notification-service
+  template:
+    metadata:
+      labels:
+        app: notification-service
+    spec:
+      serviceAccountName: notification-service
+      # preStop (10 s) + tempo do próprio serviço para terminar o que
+      # está em andamento, antes do kill.
+      terminationGracePeriodSeconds: 60
+      # Restrito (Pod Security Standards): a imagem já roda como uid 10001.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: notification-service
+      containers:
+        - name: notification-service
+          image: notification-service
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "10"]
+          ports:
+            - containerPort: 8084
+          env:
+            - name: PORT
+              value: "8084"
+            # Consome a assinatura do tópico que o donation-service publica e
+            # grava o registro no Firestore (Workload Identity, KSA
+            # notification-service). Fecha o trace distribuído assíncrono.
+            - name: CLOUD_PROVIDER
+              value: "gcp"
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: gcp-config
+                  key: GCP_PROJECT_ID
+            - name: PUBSUB_SUBSCRIPTION
+              value: "notification-service"
+            - name: FIRESTORE_COLLECTION
+              value: "donation_notifications"
+            - name: OTEL_SERVICE_NAME
+              value: "notification-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring.svc.cluster.local:4318"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "http/protobuf"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production"
+            - name: OTEL_TRACES_EXPORTER
+              value: "otlp"
+            - name: OTEL_METRICS_EXPORTER
+              value: "otlp"
+            - name: OTEL_LOGS_EXPORTER
+              value: "none"
+            - name: OTEL_PYTHON_LOG_CORRELATION
+              value: "true"
+          # gRPC (Pub/Sub e Firestore) + OTel: 128Mi não bastam.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 160Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8084
+            initialDelaySeconds: 10
+            periodSeconds: 15

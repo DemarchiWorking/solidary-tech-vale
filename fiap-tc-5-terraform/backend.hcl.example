@@ -1,8 +1,0 @@
-# Copie para backend.hcl (gitignorado) e preencha com o storage account do
-# remote state da SUA assinatura Azure (crie o storage antes do primeiro init).
-#   terraform init -backend-config=backend.hcl
-
-resource_group_name  = "<resource-group-do-state>"
-storage_account_name = "<storage-account-do-state>"
-container_name       = "<container>"
-key                  = "solidarytech.tfstate"

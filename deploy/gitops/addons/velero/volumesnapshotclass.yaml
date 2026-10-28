@@ -1,0 +1,15 @@
+# Snapshots CSI dos discos (PD) usados pelo Velero. Guardados na região de
+# DR, para o restore funcionar mesmo se a região principal cair. A CRD vem
+# do GKE; SkipDryRun evita falha do primeiro sync.
+apiVersion: snapshot.storage.k8s.io/v1
+kind: VolumeSnapshotClass
+metadata:
+  name: solidarytech-pd-snapshot
+  labels:
+    velero.io/csi-volumesnapshot-class: "true"
+  annotations:
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+driver: pd.csi.storage.gke.io
+deletionPolicy: Retain
+parameters:
+  storage-locations: southamerica-west1

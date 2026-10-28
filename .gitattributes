@@ -1,0 +1,7 @@
+# LF em tudo: scripts e manifests rodam em Linux (containers, runners do CI,
+# GKE). Sem isso, um clone no Windows com core.autocrlf=true grava CRLF e os
+# scripts .sh montados nos containers quebram.
+* text=auto eol=lf
+
+*.png binary
+*.jpg binary

@@ -1,20 +1,28 @@
 name: Self-Healing - ngo-service
 
-# Disparado via webhook do Datadog (Monitor -> Integração Webhook,
-# @webhook-github-selfheal-ngo-service, ver fiap-tc-5-terraform/datadog.tf)
-# — só dispara se "ngo-service" estiver em var.monitored_services.
+# Disparado pelo webhook do Datadog (@webhook-github-selfheal-ngo-service,
+# ver infra/terraform/modules/observability/main.tf) quando o alerta de
+# taxa de erros 5xx ou de latência do serviço entra em Alert.
 #
 # Monorepo: os 4 self-heals moram neste repositório; cada um escuta o
 # próprio event_type (self-heal-ngo-service) e só reinicia o seu serviço.
 # O GitHub só dispara repository_dispatch pelos workflows da branch padrão.
 #
 #   POST https://api.github.com/repos/<owner>/<repo>/dispatches
-#   Authorization: Bearer <GitHub PAT com escopo 'repo'>
+#   Authorization: Bearer <token fine-grained com Contents: Read and write>
 #   Accept: application/vnd.github+json
 #   {
 #     "event_type": "self-heal-ngo-service",
 #     "client_payload": { "service": "ngo-service", "alert_title": "...", "alert_id": "..." }
 #   }
+#
+# Acesso ao cluster sem chave: OIDC do GitHub -> Workload Identity
+# Federation -> SA ci-selfheal (IAM roles/container.viewer, que dá o
+# container.clusters.connect do endpoint DNS) -> RBAC do cluster, que só
+# deixa essa SA reiniciar Deployments nos namespaces dos serviços
+# (infra/terraform/modules/platform, Role selfheal-rollout-restart).
+# Variáveis do repositório: GCP_WIF_PROVIDER, GCP_SELFHEAL_SA,
+# GCP_PROJECT_ID, GKE_CLUSTER_NAME e GKE_LOCATION (opcional).
 
 on:
   repository_dispatch:
@@ -23,6 +31,12 @@ on:
 
 permissions:
   contents: read
+  id-token: write # token OIDC para a federação de identidade
+
+# Alertas repetidos do mesmo serviço não reiniciam em paralelo.
+concurrency:
+  group: self-heal-ngo-service
+  cancel-in-progress: false
 
 env:
   SERVICE_NAME: ngo-service
@@ -32,31 +46,51 @@ jobs:
   rollout-restart:
     name: kubectl rollout restart
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Azure Login
-        uses: azure/login@7184910d9eb2b1c5e48f7073824a90609bb9b6d6 # v2
-        with:
-          creds: ${{ secrets.AZURE_CREDENTIALS }}
-
-      - name: Get AKS credentials
+      - name: Conferir configuração
+        env:
+          GCP_WIF_PROVIDER: ${{ vars.GCP_WIF_PROVIDER }}
+          GCP_SELFHEAL_SA: ${{ vars.GCP_SELFHEAL_SA }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GKE_CLUSTER_NAME: ${{ vars.GKE_CLUSTER_NAME }}
         run: |
-          az aks get-credentials \
-            --resource-group ${{ secrets.AKS_RESOURCE_GROUP }} \
-            --name ${{ secrets.AKS_CLUSTER_NAME }} \
-            --overwrite-existing
+          faltando=""
+          for v in GCP_WIF_PROVIDER GCP_SELFHEAL_SA GCP_PROJECT_ID GKE_CLUSTER_NAME; do
+            [ -n "${!v}" ] || faltando="$faltando $v"
+          done
+          if [ -n "$faltando" ]; then
+            echo "::error::Variáveis do repositório não cadastradas:$faltando"
+            exit 1
+          fi
+
+      - name: Autenticar no Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WIF_PROVIDER }}
+          service_account: ${{ vars.GCP_SELFHEAL_SA }}
+
+      - name: Credenciais do GKE (endpoint DNS)
+        uses: google-github-actions/get-gke-credentials@3da1e46a907576cefaa90c484278bb5b259dd395 # v3
+        with:
+          cluster_name: ${{ vars.GKE_CLUSTER_NAME }}
+          location: ${{ vars.GKE_LOCATION || 'southamerica-east1' }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          use_dns_based_endpoint: true
 
       - name: Self-Healing - rollout restart
+        env:
+          # O título vem do payload do webhook: entra só como variável de
+          # ambiente, nunca interpolado no script.
+          ALERT_TITLE: ${{ github.event.client_payload.alert_title || 'disparo manual' }}
         run: |
           echo "### Self-Healing acionado ###"
-          echo "Serviço: ${{ env.SERVICE_NAME }}"
-          echo "Namespace: ${{ env.NAMESPACE }}"
-          echo "Alerta: ${{ github.event.client_payload.alert_title || 'disparo manual' }}"
-          kubectl rollout restart deployment/${{ env.SERVICE_NAME }} \
-            -n ${{ env.NAMESPACE }}
-          kubectl rollout status deployment/${{ env.SERVICE_NAME }} \
-            -n ${{ env.NAMESPACE }} --timeout=120s
+          echo "Serviço: $SERVICE_NAME"
+          echo "Namespace: $NAMESPACE"
+          echo "Alerta: $ALERT_TITLE"
+          kubectl rollout restart "deployment/$SERVICE_NAME" -n "$NAMESPACE"
+          kubectl rollout status "deployment/$SERVICE_NAME" -n "$NAMESPACE" --timeout=180s
 
       - name: Evidência - pods após o restart
         if: always()
-        run: |
-          kubectl get pods -n ${{ env.NAMESPACE }} -o wide
+        run: kubectl get pods -n "$NAMESPACE" -l "app=$SERVICE_NAME" -o wide

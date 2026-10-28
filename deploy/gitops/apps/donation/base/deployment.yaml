@@ -1,0 +1,95 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: donation-service
+  labels:
+    app: donation-service
+spec:
+  # Sem replicas: quem decide é o HPA (overlays/prod/hpa.yaml).
+  selector:
+    matchLabels:
+      app: donation-service
+  template:
+    metadata:
+      labels:
+        app: donation-service
+    spec:
+      serviceAccountName: donation-service
+      # preStop (10 s) + tempo do próprio serviço para terminar o que
+      # está em andamento, antes do kill.
+      terminationGracePeriodSeconds: 60
+      # Restrito (Pod Security Standards): a imagem já roda como uid 10001.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: topology.kubernetes.io/zone
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: donation-service
+      containers:
+        - name: donation-service
+          image: donation-service
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "10"]
+          ports:
+            - containerPort: 8082
+          env:
+            - name: PORT
+              value: "8082"
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: db-secrets
+                  key: donation-database-url
+            # Pub/Sub com Workload Identity (KSA donation-service): sem
+            # credencial no pod. GCP_PROJECT_ID vem do ConfigMap gcp-config,
+            # criado pelo Terraform.
+            - name: CLOUD_PROVIDER
+              value: "gcp"
+            - name: GCP_PROJECT_ID
+              valueFrom:
+                configMapKeyRef:
+                  name: gcp-config
+                  key: GCP_PROJECT_ID
+            - name: PUBSUB_TOPIC
+              value: "donation-events"
+            - name: OTEL_SERVICE_NAME
+              value: "donation-service"
+            - name: OTEL_EXPORTER_OTLP_ENDPOINT
+              value: "http://otel-collector.monitoring.svc.cluster.local:4317"
+            - name: OTEL_EXPORTER_OTLP_PROTOCOL
+              value: "grpc"
+            - name: OTEL_RESOURCE_ATTRIBUTES
+              value: "deployment.environment=production"
+          # Hot Path: mais headroom que os demais serviços + HPA (ver
+          # overlays/prod/hpa.yaml) — é o serviço com SLO formal definido.
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 15

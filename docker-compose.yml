@@ -1,0 +1,170 @@
+# Ambiente local completo da SolidaryTech, com o mesmo desenho da nuvem GCP:
+# Postgres no lugar do Cloud SQL e os emuladores oficiais do Pub/Sub e do
+# Firestore no lugar dos serviços gerenciados. Os 4 serviços rodam com
+# CLOUD_PROVIDER=gcp, igual ao cluster.
+#
+#   docker compose up -d --build --wait
+#   ./scripts/smoke-local.sh
+#   docker compose down -v
+#
+# As portas ficam só em 127.0.0.1 e podem ser trocadas por variável
+# (NGO_PORT, DONATION_PORT, VOLUNTEER_PORT, NOTIFICATION_PORT, PUBSUB_PORT,
+# FIRESTORE_PORT).
+name: solidarytech
+
+x-gcp-local: &gcp-local
+  CLOUD_PROVIDER: gcp
+  GCP_PROJECT_ID: solidarytech-local
+  PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+  FIRESTORE_EMULATOR_HOST: firestore-emulator:8080
+
+x-otel-python: &otel-python
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+  OTEL_EXPORTER_OTLP_PROTOCOL: http/protobuf
+  OTEL_TRACES_EXPORTER: otlp
+  OTEL_METRICS_EXPORTER: otlp
+  OTEL_LOGS_EXPORTER: none
+
+x-emulators-image: &emulators-image gcr.io/google.com/cloudsdktool/google-cloud-cli:591.0.0-emulators@sha256:112c21f8f6e04b03b393b3c34fb943a1f443e839f18c6492c364ac2e6c3ff935
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: solidarytech
+      POSTGRES_PASSWORD: solidarytech-local
+    volumes:
+      - ./scripts/local/postgres-init.sh:/docker-entrypoint-initdb.d/00-init.sh:ro
+      - ./services/ngo-service/db/init.sql:/sql/ngo.sql:ro
+      - ./services/donation-service/db/init.sql:/sql/donation.sql:ro
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solidarytech -d donation_db"]
+      interval: 3s
+      retries: 20
+
+  pubsub-emulator:
+    image: *emulators-image
+    command: gcloud beta emulators pubsub start --project=solidarytech-local --host-port=0.0.0.0:8085
+    ports:
+      - "127.0.0.1:${PUBSUB_PORT:-9085}:8085"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8085"]
+      interval: 3s
+      retries: 40
+
+  firestore-emulator:
+    image: *emulators-image
+    command: gcloud emulators firestore start --host-port=0.0.0.0:8080
+    ports:
+      - "127.0.0.1:${FIRESTORE_PORT:-9086}:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080"]
+      interval: 3s
+      retries: 40
+
+  pubsub-init:
+    image: *emulators-image
+    environment:
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8085
+      GCP_PROJECT_ID: solidarytech-local
+    volumes:
+      - ./scripts/local/pubsub-init.sh:/pubsub-init.sh:ro
+    entrypoint: ["sh", "/pubsub-init.sh"]
+    depends_on:
+      pubsub-emulator:
+        condition: service_healthy
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.160.0@sha256:799dc6cf12c96192af37b5bdba804da8c10b3bc563b43cb90c3f3c58d9572ad6
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./scripts/local/otel-collector.yaml:/etc/otelcol/config.yaml:ro
+
+  ngo-service:
+    build: ./services/ngo-service
+    # Igual ao securityContext do GKE (deploy/gitops/apps/*/base/deployment.yaml).
+    user: "10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *otel-python
+      PORT: "8081"
+      DATABASE_URL: postgres://solidarytech:solidarytech-local@postgres:5432/ngo_db?sslmode=disable
+      OTEL_SERVICE_NAME: ngo-service
+    ports:
+      - "127.0.0.1:${NGO_PORT:-9081}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck: &python-health
+      test: ["CMD", "python", "-c", "import os,urllib.request; urllib.request.urlopen('http://localhost:' + os.environ['PORT'] + '/health')"]
+      interval: 3s
+      retries: 30
+
+  donation-service:
+    build: ./services/donation-service
+    # Igual ao securityContext do GKE (deploy/gitops/apps/*/base/deployment.yaml).
+    user: "10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: *gcp-local
+      PORT: "8082"
+      DATABASE_URL: postgres://solidarytech:solidarytech-local@postgres:5432/donation_db?sslmode=disable
+      PUBSUB_TOPIC: donation-events
+      OTEL_SERVICE_NAME: donation-service
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4317
+    ports:
+      - "127.0.0.1:${DONATION_PORT:-9082}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      pubsub-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/health"]
+      interval: 3s
+      retries: 30
+
+  volunteer-service:
+    build: ./services/volunteer-service
+    # Igual ao securityContext do GKE (deploy/gitops/apps/*/base/deployment.yaml).
+    user: "10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: [*gcp-local, *otel-python]
+      PORT: "8083"
+      FIRESTORE_COLLECTION: volunteers
+      OTEL_SERVICE_NAME: volunteer-service
+    ports:
+      - "127.0.0.1:${VOLUNTEER_PORT:-9083}:8083"
+    depends_on:
+      firestore-emulator:
+        condition: service_healthy
+    healthcheck: *python-health
+
+  notification-service:
+    build: ./services/notification-service
+    # Igual ao securityContext do GKE (deploy/gitops/apps/*/base/deployment.yaml).
+    user: "10001"
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    environment:
+      <<: [*gcp-local, *otel-python]
+      PORT: "8084"
+      PUBSUB_SUBSCRIPTION: notification-service
+      FIRESTORE_COLLECTION: donation_notifications
+      OTEL_SERVICE_NAME: notification-service
+    ports:
+      - "127.0.0.1:${NOTIFICATION_PORT:-9084}:8084"
+    depends_on:
+      firestore-emulator:
+        condition: service_healthy
+      pubsub-init:
+        condition: service_completed_successfully
+    healthcheck: *python-health
+
+volumes:
+  postgres-data:

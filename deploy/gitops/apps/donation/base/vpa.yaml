@@ -1,0 +1,14 @@
+# FinOps: só recomendação de CPU e memória (updateMode Off), para ajustar
+# os requests com dado real; não mexe nos pods e não briga com o HPA.
+# kubectl -n donation describe vpa donation-service
+apiVersion: autoscaling.k8s.io/v1
+kind: VerticalPodAutoscaler
+metadata:
+  name: donation-service
+spec:
+  targetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: donation-service
+  updatePolicy:
+    updateMode: "Off"

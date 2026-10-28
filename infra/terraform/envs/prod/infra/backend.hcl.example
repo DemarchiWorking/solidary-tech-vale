@@ -1,0 +1,3 @@
+# Copie para backend.hcl (gitignorado). O bucket é o output state_bucket do
+# bootstrap. Depois: terraform init -backend-config=backend.hcl
+bucket = "<id-do-projeto>-tfstate"

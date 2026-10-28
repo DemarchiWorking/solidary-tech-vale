@@ -1,0 +1,45 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: apps
+  namespace: argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
+        revision: HEAD
+        directories:
+          # Monorepo: o caminho começa em deploy/gitops/, então o nome do app
+          # (ngo, donation, ...) é o segmento 3.
+          - path: deploy/gitops/apps/*/overlays/prod
+  template:
+    metadata:
+      name: 'app-{{ index .path.segments 3 }}'
+    spec:
+      project: default
+      source:
+        repoURL: https://github.com/DemarchiWorking/solidary-tech-vale.git
+        targetRevision: HEAD
+        path: '{{ .path.path }}'
+      destination:
+        server: https://kubernetes.default.svc
+        # Sem prefixo de produto no namespace (diferente da Fase 3/4, que
+        # usava "togglemaster-<app>") — aqui o namespace é o nome do app
+        # direto: "ngo", "donation", "volunteer", "notification".
+        namespace: '{{ index .path.segments 3 }}'
+      syncPolicy:
+        automated:
+          selfHeal: true
+          prune: true
+        retry:
+          limit: 10
+          backoff:
+            duration: 10s
+            factor: 2
+            maxDuration: 5m
+        syncOptions:
+          - CreateNamespace=true
+      # Os Secrets que os apps usam não estão neste repositório: são
+      # criados pelo Terraform (infra/terraform/modules/platform).
