@@ -120,8 +120,8 @@ jobs:
           name: coverage
           path: services/notification-service
 
-      # Falha com mensagem clara em vez do "Not authorized" ou do "You must
-      # define ... sonar.organization" do scanner.
+      # Sem a variável, o scanner do SonarQube Cloud pararia em "You must
+      # define the following mandatory properties: sonar.organization".
       - name: Conferir organização do SonarQube Cloud
         if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
         working-directory: .

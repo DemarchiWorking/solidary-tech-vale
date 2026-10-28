@@ -18,7 +18,7 @@ Workload Identity Federation ([ADR 0007](../arquitetura/adr/0007-identidade-sem-
 
 ```
 lint ─┐
-      ├─► sonarqube (pula sem SONAR_TOKEN)
+      ├─► sonarqube (pula sem SONAR_TOKEN e SONAR_HOST_URL)
 test ─┤
       └─► build-scan-push ──► update-gitops
            Trivy fs, build,      kustomize edit set image,
