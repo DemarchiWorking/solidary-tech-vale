@@ -5,10 +5,12 @@ dois secrets do repositório: `SONAR_TOKEN` e `SONAR_HOST_URL`. Sem os dois,
 o job mostra o aviso "SONAR_TOKEN ou SONAR_HOST_URL não cadastrado; análise
 do SonarQube pulada." e termina sem falhar.
 
-O SonarQube é o do próprio cluster (addon `deploy/gitops/addons/sonarqube`,
-Community Build, chart 2026.4.1), servido em `https://<host>/sonarqube`. Por
-isso este runbook vem depois do [runbook 02](02-primeiro-deploy.md): antes
-de o cluster existir, não há SonarQube para apontar, e o job continua pulado.
+O SonarQube previsto é o do próprio cluster (addon
+`deploy/gitops/addons/sonarqube`, Community Build, chart 2026.4.1), servido
+em `https://<host>/sonarqube`; os passos 1 a 7 são para ele e vêm depois do
+[runbook 02](02-primeiro-deploy.md). Para ter análise antes de o cluster
+existir, use o SonarQube Cloud
+([seção própria](#alternativa-sonarqube-cloud-sonarcloudio)).
 
 ## Antes
 
@@ -112,6 +114,56 @@ Actions > `CI - ngo-service` > Run workflow, branch `main`. No job
 (`/sonarqube/dashboard?id=ngo-service`). No SonarQube, o projeto passa a
 mostrar issues e cobertura. Repita para os outros três serviços, ou espere
 o próximo push que mexa em cada um.
+
+## Alternativa: SonarQube Cloud (sonarcloud.io)
+
+Serve para ter análise antes de o cluster existir. O SonarQube Cloud exige
+duas coisas a mais que o SonarQube próprio: a organização
+(`sonar.organization`) e chaves de projeto únicas na plataforma inteira.
+Com a variável `SONAR_ORGANIZATION` cadastrada, os workflows mandam a
+organização e usam a chave `<organização>_<serviço>`.
+
+Sem a organização, o scanner falha de um destes jeitos:
+
+| Mensagem no passo `SonarQube Scan` | O que é |
+|---|---|
+| `Load global settings` seguido de `Not authorized. Please check the 'sonar.token' property...` | token aceito, mas a chamada foi feita sem organização |
+| `You must define the following mandatory properties: sonar.organization` | mesma causa, sem token |
+| `Not authorized or organization not found` | organização errada, ou o dono do token não é membro dela |
+| `403` em `api.sonarcloud.io/analysis/jres` | token inválido, revogado ou de outro produto |
+
+Com a versão atual dos workflows, faltar a variável vira um erro claro no
+passo `Conferir organização do SonarQube Cloud`, antes do scanner.
+
+1. Entre em https://sonarcloud.io com a conta do GitHub.
+2. Ache a chave da organização: na página da organização, a URL é
+   `https://sonarcloud.io/organizations/<chave>`. É a chave, não o nome de
+   exibição.
+3. Crie os 4 projetos dentro dela, com a opção de criar o projeto
+   manualmente, e as chaves:
+
+   | Project key | Display name |
+   |---|---|
+   | `<chave>_donation-service` | donation-service |
+   | `<chave>_ngo-service` | ngo-service |
+   | `<chave>_volunteer-service` | volunteer-service |
+   | `<chave>_notification-service` | notification-service |
+
+   Se o projeto foi importado direto do GitHub, desligue a análise
+   automática (Administration > Analysis Method): análise pelo CI e análise
+   automática no mesmo projeto não convivem.
+4. Token: My Account > Security > Generate Tokens. Copie o valor.
+5. No GitHub, em Settings > Secrets and variables > Actions:
+   - aba **Secrets**: `SONAR_TOKEN` com o token e `SONAR_HOST_URL` com
+     `https://sonarcloud.io`;
+   - aba **Variables** > New repository variable: `SONAR_ORGANIZATION` com
+     a chave do passo 2. É variável, não secret: a chave da organização não
+     é segredo, e o workflow precisa dela para montar a chave do projeto.
+6. Rode um CI (passo 7). O passo `Conferir organização do SonarQube Cloud`
+   mostra `Projeto <chave>_<serviço>, organização <chave>`.
+
+O plano gratuito do SonarQube Cloud tem limites para repositórios privados;
+confira no site antes de criar os projetos.
 
 ## Atualizar
 

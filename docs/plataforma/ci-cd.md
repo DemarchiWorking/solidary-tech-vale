@@ -97,6 +97,7 @@ Terraform.
 | `GCP_REGISTRY` | variável | output `registry_url` de `envs/prod/infra` | CIs |
 | `GKE_CLUSTER_NAME` | variável | output `cluster_name` | self-heals |
 | `GKE_LOCATION` | variável | output `cluster_location` (padrão `southamerica-east1`) | self-heals |
+| `SONAR_ORGANIZATION` | variável | chave da organização no SonarQube Cloud; vazia com SonarQube próprio ([runbook 06](../operacao/runbooks/06-sonarqube-no-ci.md#alternativa-sonarqube-cloud-sonarcloudio)) | CIs |
 | `PAGERDUTY_USER_EMAIL`, `DD_SITE` | variáveis | e-mail do usuário do PagerDuty; site do Datadog (opcional) | terraform |
 | `SONAR_TOKEN`, `SONAR_HOST_URL` | secrets | Global Analysis Token e `https://<host>/sonarqube` ([runbook 06](../operacao/runbooks/06-sonarqube-no-ci.md)); sem os dois, a análise é pulada com aviso | CIs |
 | `DD_API_KEY`, `DD_APP_KEY` | secrets | chaves do Datadog | terraform |

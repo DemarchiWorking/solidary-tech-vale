@@ -91,9 +91,14 @@ jobs:
     needs: [lint, test]
     # Sem os secrets SONAR_TOKEN e SONAR_HOST_URL, a análise é pulada com um
     # aviso em vez de falhar (docs/operacao/runbooks/06-sonarqube-no-ci.md).
+    # SonarQube Cloud (sonarcloud.io) exige a organização e chaves de projeto
+    # únicas na plataforma inteira: com a variável SONAR_ORGANIZATION, a chave
+    # vira <organização>_<serviço>; sem ela (SonarQube próprio), só <serviço>.
     env:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+      SONAR_ORGANIZATION: ${{ vars.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ vars.SONAR_ORGANIZATION != '' && format('{0}_ngo-service', vars.SONAR_ORGANIZATION) || 'ngo-service' }}
     steps:
       # Roda na raiz do workspace: antes do checkout, a pasta do serviço
       # (working-directory padrão do workflow) ainda não existe.
@@ -115,6 +120,21 @@ jobs:
           name: coverage
           path: services/ngo-service
 
+      # Falha com mensagem clara em vez do "Not authorized" ou do "You must
+      # define ... sonar.organization" do scanner.
+      - name: Conferir organização do SonarQube Cloud
+        if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
+        working-directory: .
+        run: |
+          case "$SONAR_HOST_URL" in
+            *sonarcloud.io*)
+              if [ -z "$SONAR_ORGANIZATION" ]; then
+                echo "::error::SONAR_HOST_URL aponta para o SonarQube Cloud: cadastre a variável SONAR_ORGANIZATION com a chave da organização (docs/operacao/runbooks/06-sonarqube-no-ci.md)."
+                exit 1
+              fi ;;
+          esac
+          echo "Projeto $SONAR_PROJECT_KEY${SONAR_ORGANIZATION:+, organização $SONAR_ORGANIZATION}"
+
       - name: SonarQube Scan
         if: env.SONAR_TOKEN != '' && env.SONAR_HOST_URL != ''
         uses: SonarSource/sonarqube-scan-action@689fb39b34b9aa95ebc5f8f119343ddd51542402 # v4
@@ -124,7 +144,8 @@ jobs:
         with:
           projectBaseDir: services/ngo-service
           args: >
-            -Dsonar.projectKey=ngo-service
+            -Dsonar.projectKey=${{ env.SONAR_PROJECT_KEY }}
+            ${{ env.SONAR_ORGANIZATION != '' && format('-Dsonar.organization={0}', env.SONAR_ORGANIZATION) || '' }}
             -Dsonar.sources=.
             -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.exclusions=test_*.py
