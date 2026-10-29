@@ -153,6 +153,9 @@ resource "google_service_account" "ci" {
   project      = var.project_id
   account_id   = each.key
   display_name = each.value
+
+  # Num projeto novo, a API do IAM é ligada neste mesmo apply.
+  depends_on = [google_project_service.apis]
 }
 
 # Quem pode se passar por cada SA.
