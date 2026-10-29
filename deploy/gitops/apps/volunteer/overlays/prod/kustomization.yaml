@@ -6,5 +6,5 @@ resources:
 - gateway.yaml
 images:
 - name: volunteer-service
-  newName: registry-nao-configurado.invalid/volunteer-service
+  newName: southamerica-east1-docker.pkg.dev/solidarytech-prod/solidarytech/volunteer-service
   newTag: latest

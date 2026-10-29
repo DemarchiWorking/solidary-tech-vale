@@ -35,7 +35,7 @@ persistence:
 jdbcOverwrite:
   enabled: true
   # Preenchido por scripts/configurar-ambiente.sh (output sonarqube_jdbc_url).
-  jdbcUrl: "__SONARQUBE_JDBC_URL__"
+  jdbcUrl: "jdbc:postgresql://10.40.0.2:5432/sonarqube?sslmode=require"
   jdbcUsername: sonarqube
   jdbcSecretName: sonarqube-jdbc
   jdbcSecretPasswordKey: jdbc-password

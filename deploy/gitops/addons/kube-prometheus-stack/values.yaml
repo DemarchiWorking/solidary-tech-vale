@@ -145,7 +145,7 @@ grafana:
       # scripts/configurar-ambiente.sh preenche a partir do output
       # gateway_hostname do Terraform. O protocolo é fixo em https: o TLS
       # termina no load balancer, então %(protocol)s viraria http.
-      domain: "__GATEWAY_HOSTNAME__"
+      domain: "136-68-42-99.sslip.io"
       root_url: "https://%(domain)s/grafana/"
       serve_from_sub_path: true
 

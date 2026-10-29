@@ -12,6 +12,35 @@ service accounts do CI.
   cluster (IAM e administrador > Cotas); com menos, reduza
   `max_nodes_per_zone` no runbook 02.
 
+## Pelo Cloud Shell (sem instalar nada na sua máquina)
+
+O Cloud Shell (ícone `>_` no topo do console) já tem `gcloud`, `kubectl`,
+`git` e o seu login; o `gcloud auth login` do passo 1 não é necessário lá.
+O Terraform que vem instalado costuma ser mais antigo que o 1.16 exigido
+pelas stacks; instale o 1.16.2 na pasta pessoal, que persiste entre sessões:
+
+```bash
+mkdir -p ~/bin && cd ~/bin && curl -fsSLO https://releases.hashicorp.com/terraform/1.16.2/terraform_1.16.2_linux_amd64.zip && curl -fsSLO https://releases.hashicorp.com/terraform/1.16.2/terraform_1.16.2_SHA256SUMS
+```
+
+```bash
+grep linux_amd64.zip terraform_1.16.2_SHA256SUMS | sha256sum -c - && unzip -o terraform_1.16.2_linux_amd64.zip terraform && rm terraform_1.16.2_linux_amd64.zip terraform_1.16.2_SHA256SUMS
+```
+
+```bash
+grep -q 'HOME/bin' ~/.bashrc || echo 'export PATH="$HOME/bin:$PATH"' >> ~/.bashrc; export PATH="$HOME/bin:$PATH"; terraform version
+```
+
+E traga o repositório (público):
+
+```bash
+cd ~ && git clone https://github.com/DemarchiWorking/solidary-tech-vale.git && cd solidary-tech-vale
+```
+
+Os arquivos `terraform.tfvars` e `backend.hcl` ficam só nessa cópia do Cloud
+Shell (estão no `.gitignore`). Em sessão nova, rode `cd ~/solidary-tech-vale
+&& git pull`.
+
 ## Passos
 
 1. Login e APIs mínimas (o Terraform habilita o resto):
