@@ -5,5 +5,5 @@ resources:
 - ../../base
 images:
 - name: notification-service
-  newName: registry-nao-configurado.invalid/notification-service
+  newName: southamerica-east1-docker.pkg.dev/solidarytech-prod/solidarytech/notification-service
   newTag: latest

@@ -8,5 +8,5 @@ resources:
 - gateway.yaml
 images:
 - name: ngo-service
-  newName: registry-nao-configurado.invalid/ngo-service
+  newName: southamerica-east1-docker.pkg.dev/solidarytech-prod/solidarytech/ngo-service
   newTag: latest

@@ -25,7 +25,7 @@ credentials:
 serviceAccount:
   server:
     annotations:
-      iam.gke.io/gcp-service-account: "__VELERO_GSA__"
+      iam.gke.io/gcp-service-account: "solidarytech-velero@solidarytech-prod.iam.gserviceaccount.com"
 
 resources:
   requests:
@@ -39,12 +39,12 @@ configuration:
   backupStorageLocation:
     - name: default
       provider: gcp
-      bucket: "__DR_BUCKET__"
+      bucket: "solidarytech-prod-solidarytech-dr"
       prefix: velero
       default: true
       config:
         # A GSA assina as URLs de download (velero backup describe/logs).
-        serviceAccount: "__VELERO_GSA__"
+        serviceAccount: "solidarytech-velero@solidarytech-prod.iam.gserviceaccount.com"
 
   # Só snapshots CSI: o VolumeSnapshotClass com a label do Velero define
   # onde ficam. Sem VolumeSnapshotLocation nativo.

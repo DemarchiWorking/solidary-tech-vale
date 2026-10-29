@@ -9,5 +9,5 @@ resources:
 - gateway.yaml
 images:
 - name: donation-service
-  newName: registry-nao-configurado.invalid/donation-service
+  newName: southamerica-east1-docker.pkg.dev/solidarytech-prod/solidarytech/donation-service
   newTag: latest
