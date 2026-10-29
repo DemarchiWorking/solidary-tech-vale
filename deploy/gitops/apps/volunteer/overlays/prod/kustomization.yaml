@@ -7,4 +7,4 @@ resources:
 images:
 - name: volunteer-service
   newName: southamerica-east1-docker.pkg.dev/solidarytech-prod/solidarytech/volunteer-service
-  newTag: latest
+  newTag: 945b43e72b79f24507f7f5bf9f0159c80798001d
